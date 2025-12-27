@@ -1,10 +1,9 @@
 export default async function handler(req, res) {
-  // 🔓 CORS – tillad kald fra hjemmesider
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // Preflight request (browser-tjek)
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -16,39 +15,44 @@ export default async function handler(req, res) {
   try {
     const { subject, level, question } = req.body;
 
-    const prompt = `
-Du er en hjælpsom dansk assistent.
-Forklar ting simpelt og ansvarligt.
-Ingen færdige afleveringer – kun forklaring.
-
-Fag: ${subject}
-Niveau: ${level}
-Spørgsmål: ${question}
-`;
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.4
+        model: "gpt-4.1-mini",
+        input: `
+Du er en hjælpsom dansk lektiehjælper.
+Forklar ting simpelt og ansvarligt.
+Ingen færdige afleveringer – kun forklaring.
+
+Fag: ${subject}
+Niveau: ${level}
+Spørgsmål: ${question}
+`
       })
     });
 
     const data = await response.json();
 
-    res.status(200).json({
-      answer: data.choices[0].message.content
-    });
+    // 👇 NY måde at læse svaret på
+    const answer =
+      data.output_text ||
+      (data.output && data.output[0]?.content?.[0]?.text) ||
+      null;
 
-  } catch (error) {
+    if (!answer) {
+      return res.status(500).json({ error: "AI fejl" });
+    }
+
+    res.status(200).json({ answer });
+
+  } catch (err) {
     res.status(500).json({
-      error: "AI-fejl",
-      details: error.message
+      error: "AI fejl",
+      details: err.message
     });
   }
 }
