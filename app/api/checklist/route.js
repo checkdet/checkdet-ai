@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 
 export async function POST(req) {
   try {
+    // Læs body sikkert
     const body = await req.json();
 
+    // 🔒 ALDRIG null – ALTID string
     const question = String(
-      body.question ||
-      body.message ||
+      body?.question ||
+      body?.message ||
       "Lav en praktisk huskeseddel med relevante punkter."
     );
 
+    // Kald OpenAI
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -22,7 +25,7 @@ export async function POST(req) {
           {
             role: "system",
             content:
-              "Du laver korte, konkrete tjeklister i punktform på dansk."
+              "Du laver korte, konkrete tjeklister i punktform på dansk. Ingen forklaringer."
           },
           {
             role: "user",
@@ -37,18 +40,25 @@ export async function POST(req) {
 
     if (!r.ok) {
       return NextResponse.json(
-        { error: "OpenAI fejl", details: data },
+        {
+          error: "OpenAI fejl",
+          details: data
+        },
         { status: 500 }
       );
     }
 
+    // Send KUN det rene svar tilbage
     return NextResponse.json({
-      answer: data.choices[0].message.content
+      answer: data.choices?.[0]?.message?.content || ""
     });
 
-  } catch (e) {
+  } catch (error) {
     return NextResponse.json(
-      { error: "Serverfejl", details: e.message },
+      {
+        error: "Serverfejl",
+        details: error.message
+      },
       { status: 500 }
     );
   }
