@@ -1,18 +1,30 @@
 import { NextResponse } from "next/server";
 
+// 🔓 CORS headers (tillader one.com)
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*", // kan låses senere
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type"
+};
+
+// Preflight (browserens test-kald)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders
+  });
+}
+
 export async function POST(req) {
   try {
-    // Læs body sikkert
     const body = await req.json();
 
-    // 🔒 ALDRIG null – ALTID string
     const question = String(
       body?.question ||
       body?.message ||
       "Lav en praktisk huskeseddel med relevante punkter."
     );
 
-    // Kald OpenAI
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -25,7 +37,7 @@ export async function POST(req) {
           {
             role: "system",
             content:
-              "Du laver korte, konkrete tjeklister i punktform på dansk. Ingen forklaringer."
+              "Du laver korte, konkrete tjeklister i punktform på dansk."
           },
           {
             role: "user",
@@ -40,26 +52,20 @@ export async function POST(req) {
 
     if (!r.ok) {
       return NextResponse.json(
-        {
-          error: "OpenAI fejl",
-          details: data
-        },
-        { status: 500 }
+        { error: "OpenAI fejl", details: data },
+        { status: 500, headers: corsHeaders }
       );
     }
 
-    // Send KUN det rene svar tilbage
-    return NextResponse.json({
-      answer: data.choices?.[0]?.message?.content || ""
-    });
+    return NextResponse.json(
+      { answer: data.choices?.[0]?.message?.content || "" },
+      { headers: corsHeaders }
+    );
 
   } catch (error) {
     return NextResponse.json(
-      {
-        error: "Serverfejl",
-        details: error.message
-      },
-      { status: 500 }
+      { error: "Serverfejl", details: error.message },
+      { status: 500, headers: corsHeaders }
     );
   }
 }
