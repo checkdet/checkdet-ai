@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 
-// 🔓 CORS headers (tillader one.com)
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // kan låses senere
+  "Access-Control-Allow-Origin": "https://checkdet.dk",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type"
+  "Access-Control-Allow-Headers": "Content-Type",
 };
 
-// Preflight (browserens test-kald)
-export async function OPTIONS() {
+export function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
-    headers: corsHeaders
+    headers: corsHeaders,
   });
 }
 
@@ -20,8 +18,8 @@ export async function POST(req) {
     const body = await req.json();
 
     const question = String(
-      body?.question ||
       body?.message ||
+      body?.question ||
       "Lav en praktisk huskeseddel med relevante punkter."
     );
 
@@ -29,43 +27,46 @@ export async function POST(req) {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-3.5-turbo",
         messages: [
-          {
-            role: "system",
-            content:
-              "Du laver korte, konkrete tjeklister i punktform på dansk."
-          },
-          {
-            role: "user",
-            content: question
-          }
+          { role: "system", content: "Du laver korte, konkrete tjeklister i punktform på dansk." },
+          { role: "user", content: question }
         ],
-        temperature: 0.4
-      })
+        temperature: 0.4,
+      }),
     });
 
     const data = await r.json();
 
-    if (!r.ok) {
-      return NextResponse.json(
-        { error: "OpenAI fejl", details: data },
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    return NextResponse.json(
-      { answer: data.choices?.[0]?.message?.content || "" },
-      { headers: corsHeaders }
+    return new NextResponse(
+      JSON.stringify({
+        answer: data.choices?.[0]?.message?.content || "",
+      }),
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
     );
 
   } catch (error) {
-    return NextResponse.json(
-      { error: "Serverfejl", details: error.message },
-      { status: 500, headers: corsHeaders }
+    return new NextResponse(
+      JSON.stringify({
+        error: "Serverfejl",
+        details: error.message,
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 }
