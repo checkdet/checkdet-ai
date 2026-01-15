@@ -1,11 +1,8 @@
 /**
  * CheckDet – Ansigtsstyling
- * Samlet endpoint, der matcher eksisterende /api/ask
- * Ingen nye API-nøgler
- * Ærlig håndtering af billede
+ * Korrekt Vercel Serverless-version
+ * Matcher eksisterende /api/ask
  */
-
-import fetch from "node-fetch";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -13,47 +10,38 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image, consent, userChoices } = req.body;
+    const { image, consent, userChoices } = req.body || {};
 
     /* ================================
        1. FASTSLÅ OM BILLEDE INDGÅR
-       (ingen teknisk ansigtsgenkendelse)
+       (ingen teknisk analyse – ærlig)
     ================================= */
     const imageProvided = Boolean(image);
     const imageAnalysisUsed = imageProvided && consent === true;
 
     /* ================================
        2. BYG PAYLOAD TIL /api/ask
-       Matcher dit eksisterende setup
+       (matcher dit eksisterende setup)
     ================================= */
     const askPayload = {
       tool: "ansigtsstyling",
-
-      // vigtigt flag til AI
       imageAnalysisUsed,
-
-      // ingen fiktive metrics
       faceMetrics: null,
-
-      // brugerens valg
-      userChoices
+      userChoices: userChoices || {}
     };
 
     /* ================================
-       3. KALD DIT EKSISTERENDE /api/ask
-       (samme Vercel-projekt)
+       3. KALD /api/ask (RELATIV PATH)
+       → korrekt på Vercel
     ================================= */
-    const askResponse = await fetch(
-      `${req.headers.origin}/api/ask`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(askPayload)
-      }
-    );
+    const askResponse = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(askPayload)
+    });
 
     if (!askResponse.ok) {
-      throw new Error("AI request failed");
+      throw new Error("AI endpoint failed");
     }
 
     const askData = await askResponse.json();
@@ -61,11 +49,7 @@ export default async function handler(req, res) {
     /* ================================
        4. SIMPEL, ÆRLIG SCORE
     ================================= */
-    let score = 60;
-
-    if (imageAnalysisUsed) {
-      score = 70;
-    }
+    let score = imageAnalysisUsed ? 70 : 60;
 
     /* ================================
        5. RETURNÉR SAMLET SVAR
