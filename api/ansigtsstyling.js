@@ -1,7 +1,4 @@
 export default async function handler(req, res) {
-  /* ================================
-     CORS – nødvendigt for one.com
-  ================================= */
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -17,14 +14,8 @@ export default async function handler(req, res) {
   try {
     const { image, consent, userChoices } = req.body || {};
 
-    /* ================================
-       1. ÆRLIG BILLED-LOGIK
-    ================================= */
     const imageAnalysisUsed = Boolean(image && consent === true);
 
-    /* ================================
-       2. BYG PAYLOAD TIL /api/ask
-    ================================= */
     const askPayload = {
       tool: "ansigtsstyling",
       imageAnalysisUsed,
@@ -32,9 +23,6 @@ export default async function handler(req, res) {
       userChoices: userChoices || {}
     };
 
-    /* ================================
-       3. KALD /api/ask (ABSOLUT URL)
-    ================================= */
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : `http://${req.headers.host}`;
@@ -45,32 +33,32 @@ export default async function handler(req, res) {
       body: JSON.stringify(askPayload)
     });
 
+    const rawText = await askResponse.text();
+
+    // 🔴 HER returnerer vi DEN RIGTIGE FEJL
     if (!askResponse.ok) {
-      const text = await askResponse.text();
-      throw new Error("AI endpoint failed: " + text);
+      return res.status(500).json({
+        error: "ask_failed",
+        status: askResponse.status,
+        response: rawText
+      });
     }
 
-    const askData = await askResponse.json();
+    const askData = JSON.parse(rawText);
 
-    /* ================================
-       4. SIMPEL, DETERMINISTISK SCORE
-    ================================= */
-    const score = imageAnalysisUsed ? 70 : 60;
-
-    /* ================================
-       5. RETURNÉR SVAR
-    ================================= */
     return res.status(200).json({
       imageAnalysisUsed,
-      score,
-      answer: askData.answer
+      score: imageAnalysisUsed ? 70 : 60,
+      answer: askData.answer,
+      debug: {
+        sentToAsk: askPayload
+      }
     });
 
   } catch (err) {
-    console.error("Ansigtsstyling error:", err.message);
-
     return res.status(500).json({
-      error: "ansigtsstyling_failed"
+      error: "ansigtsstyling_crash",
+      message: err.message
     });
   }
 }
