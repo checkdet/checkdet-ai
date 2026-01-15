@@ -1,4 +1,5 @@
 export default async function handler(req, res) {
+  // CORS for one.com → Vercel
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -14,8 +15,10 @@ export default async function handler(req, res) {
   try {
     const { image, consent, userChoices } = req.body || {};
 
+    // Ærlig billed-logik (ingen teknisk ansigtsanalyse endnu)
     const imageAnalysisUsed = Boolean(image && consent === true);
 
+    // Payload der matcher dit eksisterende /api/ask
     const askPayload = {
       tool: "ansigtsstyling",
       imageAnalysisUsed,
@@ -23,6 +26,7 @@ export default async function handler(req, res) {
       userChoices: userChoices || {}
     };
 
+    // Absolut URL til internt kald (kræver at Deployment Protection er slået fra)
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : `http://${req.headers.host}`;
@@ -33,32 +37,24 @@ export default async function handler(req, res) {
       body: JSON.stringify(askPayload)
     });
 
-    const rawText = await askResponse.text();
-
-    // 🔴 HER returnerer vi DEN RIGTIGE FEJL
     if (!askResponse.ok) {
-      return res.status(500).json({
-        error: "ask_failed",
-        status: askResponse.status,
-        response: rawText
-      });
+      const text = await askResponse.text();
+      throw new Error("AI endpoint failed: " + text);
     }
 
-    const askData = JSON.parse(rawText);
+    const askData = await askResponse.json();
+
+    // Deterministisk score
+    const score = imageAnalysisUsed ? 70 : 60;
 
     return res.status(200).json({
       imageAnalysisUsed,
-      score: imageAnalysisUsed ? 70 : 60,
-      answer: askData.answer,
-      debug: {
-        sentToAsk: askPayload
-      }
+      score,
+      answer: askData.answer
     });
 
   } catch (err) {
-    return res.status(500).json({
-      error: "ansigtsstyling_crash",
-      message: err.message
-    });
+    console.error("Ansigtsstyling error:", err.message);
+    return res.status(500).json({ error: "ansigtsstyling_failed" });
   }
 }
