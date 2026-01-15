@@ -19,13 +19,11 @@ export default async function handler(req, res) {
 
     /* ================================
        1. ÆRLIG BILLED-LOGIK
-       (ingen teknisk analyse endnu)
     ================================= */
     const imageAnalysisUsed = Boolean(image && consent === true);
 
     /* ================================
-       2. PAYLOAD TIL DIT /api/ask
-       (matcher eksisterende setup)
+       2. BYG PAYLOAD TIL /api/ask
     ================================= */
     const askPayload = {
       tool: "ansigtsstyling",
@@ -35,22 +33,27 @@ export default async function handler(req, res) {
     };
 
     /* ================================
-       3. KALD /api/ask (intern)
+       3. KALD /api/ask (ABSOLUT URL)
     ================================= */
-    const askResponse = await fetch("/api/ask", {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : `http://${req.headers.host}`;
+
+    const askResponse = await fetch(`${baseUrl}/api/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(askPayload)
     });
 
     if (!askResponse.ok) {
-      throw new Error("AI endpoint failed");
+      const text = await askResponse.text();
+      throw new Error("AI endpoint failed: " + text);
     }
 
     const askData = await askResponse.json();
 
     /* ================================
-       4. SIMPEL SCORE (deterministisk)
+       4. SIMPEL, DETERMINISTISK SCORE
     ================================= */
     const score = imageAnalysisUsed ? 70 : 60;
 
@@ -64,7 +67,8 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error("ansigtsstyling error:", err);
+    console.error("Ansigtsstyling error:", err.message);
+
     return res.status(500).json({
       error: "ansigtsstyling_failed"
     });
