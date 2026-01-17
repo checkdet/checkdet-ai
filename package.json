@@ -1,0 +1,8 @@
+{
+  "name": "checkdet-ai",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.540.0"
+  }
+}
