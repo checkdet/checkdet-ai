@@ -1,71 +1,83 @@
-export default async function handler(req,res){
-res.setHeader("Access-Control-Allow-Origin","https://www.checkdet.dk");
-res.setHeader("Access-Control-Allow-Methods","POST,OPTIONS");
-res.setHeader("Access-Control-Allow-Headers","Content-Type");
-if(req.method==="OPTIONS")return res.status(200).end();
-if(req.method!=="POST")return res.status(405).json({error:"Only POST"});
+import { RekognitionClient, DetectFacesCommand } from "@aws-sdk/client-rekognition";
+import fetch from "node-fetch";
 
-try{
-const AWS=(await import("aws-sdk")).default;
-const {image,consent,selections}=req.body||{};
-if(!image||consent!==true){
-  return res.status(200).json({faceDetected:false});
-}
-
-const rek=new AWS.Rekognition({
-  region:process.env.AWS_REGION,
-  accessKeyId:process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey:process.env.AWS_SECRET_ACCESS_KEY
+const rekognition = new RekognitionClient({
+  region: process.env.AWS_REGION
 });
 
-const base64=image.replace(/^data:image\/\w+;base64,/,"");
-const buf=Buffer.from(base64,"base64");
-const r=await rek.detectFaces({Image:{Bytes:buf}}).promise();
-if(!(r.FaceDetails||[]).length){
-  return res.status(200).json({faceDetected:false});
-}
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Only POST allowed" });
+  }
 
-const prompt=`
-Du er en SENIOR ansigtsstylist.
+  try {
+    const { image, consent, selections } = req.body;
 
-Brugeren har aktivt valgt disse fokusområder og ønsker
-EKSTRA ÆRLIG og KONKRET feedback netop her:
-${(selections?.focus||[]).map(f=>"- "+f).join("\n")}
+    if (!image || consent !== true) {
+      return res.status(200).json({ faceDetected:false });
+    }
 
-REGLER:
-- Ingen kønsantagelser.
-- Ingen sukkersød tone.
-- Vælg og fravælg – forklar hvorfor.
-- Giv handlingsrettede råd.
+    const base64 = image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64, "base64");
 
-Strukturér svaret i 7 afsnit:
+    const detect = await rekognition.send(
+      new DetectFacesCommand({
+        Image:{Bytes:buffer},
+        Attributes:[]
+      })
+    );
+
+    if (!detect.FaceDetails || detect.FaceDetails.length === 0) {
+      return res.status(200).json({ faceDetected:false });
+    }
+
+    const question = `
+Du er en professionel ansigtsstylist.
+
+Skriv udførligt, men præcist.
+Undgå gentagelser mellem afsnit.
+Hvert afsnit skal bygge videre på det forrige.
+
+Brug konkrete observationer fra billedet og disse fokusområder:
+${(selections?.focus||[]).join(", ")}
+
+Vær ærlig og professionel – ikke sukkersød.
+Forklar konsekvenser.
+
+Strukturér svaret i præcis disse 7 afsnit:
 1. Helhedsindtryk
-2. Udtryk
-3. Formål
+2. Overordnet udtryk
+3. Formål og signalværdi
 4. Konkrete stylingforslag
-5. Prioriterede fokusområder
+5. Fokusområder
 6. Hvad der bør undgås
 7. Alternativ tilgang
 
-Skriv som en erfaren stylist – professionelt og direkte.
+Skriv på dansk i rolig, professionel tone.
 `.trim();
 
-const baseUrl=process.env.VERCEL_URL
-?`https://${process.env.VERCEL_URL}`
-:`http://${req.headers.host}`;
+    const r = await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{
+        "Authorization":`Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        model:"gpt-4o-mini",
+        messages:[{role:"user",content:question}],
+        temperature:0.65
+      })
+    });
 
-const ask=await fetch(`${baseUrl}/api/ask`,{
-  method:"POST",
-  headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({question:prompt,temperature:0.7})
-});
+    const data = await r.json();
 
-const data=await ask.json();
-return res.status(200).json({
-  faceDetected:true,
-  answer:data.answer
-});
+    return res.status(200).json({
+      faceDetected:true,
+      answer:data.choices[0].message.content
+    });
 
-}catch(e){
-return res.status(500).json({error:"ansigtsstyling_failed"});
-}}
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error:"server_error" });
+  }
+}
