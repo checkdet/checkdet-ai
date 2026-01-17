@@ -1,17 +1,10 @@
 import AWS from "aws-sdk";
 
-const rekognition = new AWS.Rekognition({
-  region: process.env.AWS_REGION,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-});
-
 export default async function handler(req, res) {
-  /* ===== TVUNGEN CORS – ALTID ===== */
+  // 🔒 CORS – skal være øverst
   res.setHeader("Access-Control-Allow-Origin", "https://www.checkdet.dk");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Access-Control-Max-Age", "86400");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -22,42 +15,42 @@ export default async function handler(req, res) {
   }
 
   try {
+    const rekognition = new AWS.Rekognition({
+      region: process.env.AWS_REGION,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    });
+
     const { image, consent } = req.body || {};
 
     if (!image || consent !== true) {
       return res.status(200).json({
         faceDetected: false,
-        assessment: "IKKE_ANSIGT",
-        message: "Billedet kunne ikke analyseres som et ansigt.",
-        score: 0
+        message: "Billedet kunne ikke analyseres som et ansigt."
       });
     }
 
     const base64 = image.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64, "base64");
 
-    const result = await rekognition
-      .detectFaces({ Image: { Bytes: buffer } })
-      .promise();
+    const result = await rekognition.detectFaces({
+      Image: { Bytes: buffer }
+    }).promise();
 
     if (!result.FaceDetails || result.FaceDetails.length === 0) {
       return res.status(200).json({
         faceDetected: false,
-        assessment: "IKKE_ANSIGT",
-        message: "Der kan ikke ses et menneskeligt ansigt på billedet.",
-        score: 0
+        message: "Der kan ikke ses et menneskeligt ansigt på billedet."
       });
     }
 
     return res.status(200).json({
       faceDetected: true,
-      assessment: "ANSIGT",
-      message: "Der kan ses et menneskeligt ansigt på billedet.",
-      score: 80,
-      answer: "Ansigt registreret korrekt."
+      message: "Der kan ses et menneskeligt ansigt på billedet."
     });
 
-  } catch (e) {
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({ error: "ansigtsstyling_failed" });
   }
 }
