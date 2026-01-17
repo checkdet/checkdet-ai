@@ -7,11 +7,11 @@ const rekognition = new AWS.Rekognition({
 });
 
 export default async function handler(req, res) {
-
-  /* 🔒 CORS – ALTID FØRST */
+  /* ===== TVUNGEN CORS – ALTID ===== */
   res.setHeader("Access-Control-Allow-Origin", "https://www.checkdet.dk");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image, consent, userChoices } = req.body || {};
+    const { image, consent } = req.body || {};
 
     if (!image || consent !== true) {
       return res.status(200).json({
@@ -33,15 +33,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-    const imageBuffer = Buffer.from(base64Data, "base64");
+    const base64 = image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64, "base64");
 
-    const detectResult = await rekognition.detectFaces({
-      Image: { Bytes: imageBuffer },
-      Attributes: []
-    }).promise();
+    const result = await rekognition
+      .detectFaces({ Image: { Bytes: buffer } })
+      .promise();
 
-    if (!detectResult.FaceDetails || detectResult.FaceDetails.length === 0) {
+    if (!result.FaceDetails || result.FaceDetails.length === 0) {
       return res.status(200).json({
         faceDetected: false,
         assessment: "IKKE_ANSIGT",
@@ -50,34 +49,15 @@ export default async function handler(req, res) {
       });
     }
 
-    const question = `
-Du er en professionel ansigtsstylist.
-
-Der er teknisk påvist et menneskeligt ansigt på billedet.
-Billedet gemmes ikke og bruges kun til denne vurdering.
-
-Giv rådgivende stylingforslag i 7 afsnit.
-`.trim();
-
-    const askRes = await fetch("https://checkdet-ai.vercel.app/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question })
-    });
-
-    const askData = await askRes.json();
-
     return res.status(200).json({
       faceDetected: true,
       assessment: "ANSIGT",
       message: "Der kan ses et menneskeligt ansigt på billedet.",
       score: 80,
-      answer: askData.answer
+      answer: "Ansigt registreret korrekt."
     });
 
-  } catch (err) {
-    return res.status(500).json({
-      error: "ansigtsstyling_failed"
-    });
+  } catch (e) {
+    return res.status(500).json({ error: "ansigtsstyling_failed" });
   }
 }
