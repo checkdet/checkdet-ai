@@ -7,8 +7,9 @@ const rekognition = new AWS.Rekognition({
 });
 
 export default async function handler(req, res) {
-  // CORS (one.com → Vercel)
-  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  /* 🔒 CORS – ALTID FØRST */
+  res.setHeader("Access-Control-Allow-Origin", "https://www.checkdet.dk");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -32,24 +33,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // Fjern base64 header
     const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
     const imageBuffer = Buffer.from(base64Data, "base64");
 
-    /* ================================
-       1. AWS REKOGNITION – FACE CHECK
-    ================================= */
     const detectResult = await rekognition.detectFaces({
       Image: { Bytes: imageBuffer },
       Attributes: []
     }).promise();
 
-    const faceDetected = detectResult.FaceDetails.length > 0;
-
-    /* ================================
-       2. HVIS IKKE ANSIGT → STOP HER
-    ================================= */
-    if (!faceDetected) {
+    if (!detectResult.FaceDetails || detectResult.FaceDetails.length === 0) {
       return res.status(200).json({
         faceDetected: false,
         assessment: "IKKE_ANSIGT",
@@ -58,52 +50,23 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ================================
-       3. BYG PROMPT TIL /api/ask
-    ================================= */
     const question = `
 Du er en professionel ansigtsstylist.
 
 Der er teknisk påvist et menneskeligt ansigt på billedet.
 Billedet gemmes ikke og bruges kun til denne vurdering.
 
-Brugerens valg:
-${JSON.stringify(userChoices, null, 2)}
+Giv rådgivende stylingforslag i 7 afsnit.
+`.trim();
 
-Opgave:
-Giv rådgivende, ansvarlige stylingforslag.
-
-Strukturér svaret i disse 7 afsnit:
-1. Kort vurdering af helhedsindtryk
-2. Overordnet udtryk
-3. Formål og alder
-4. Konkrete stylingforslag
-5. Fokusområder
-6. Hvad der bør undgås
-7. Alternativ tilgang
-
-Skriv på dansk i professionel, rolig tone.
-    `.trim();
-
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : `http://${req.headers.host}`;
-
-    const askResponse = await fetch(`${baseUrl}/api/ask`, {
+    const askRes = await fetch("https://checkdet-ai.vercel.app/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question })
     });
 
-    const askData = await askResponse.json();
+    const askData = await askRes.json();
 
-    if (!askResponse.ok) {
-      throw new Error("AI fejl");
-    }
-
-    /* ================================
-       4. RETURNÉR FULDT SVAR
-    ================================= */
     return res.status(200).json({
       faceDetected: true,
       assessment: "ANSIGT",
@@ -113,7 +76,6 @@ Skriv på dansk i professionel, rolig tone.
     });
 
   } catch (err) {
-    console.error("Ansigtsstyling fejl:", err.message);
     return res.status(500).json({
       error: "ansigtsstyling_failed"
     });
