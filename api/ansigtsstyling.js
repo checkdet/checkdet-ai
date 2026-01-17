@@ -9,6 +9,7 @@ const client = new RekognitionClient({
 });
 
 export default async function handler(req, res) {
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "https://www.checkdet.dk");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -18,6 +19,7 @@ export default async function handler(req, res) {
 
   try {
     const { image, consent } = req.body || {};
+
     if (!image || consent !== true) {
       return res.status(200).json({
         faceDetected: false,
@@ -25,19 +27,26 @@ export default async function handler(req, res) {
       });
     }
 
+    // Fjern data:image/... header
     const base64 = image.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64, "base64");
 
     const command = new DetectFacesCommand({
-      Image: { Bytes: buffer }
+      Image: { Bytes: buffer },
+
+      // 🔴 VIGTIGSTE LINJE – løser problemet
+      Attributes: ["ALL"]
     });
 
     const result = await client.send(command);
 
-    if (!result.FaceDetails || result.FaceDetails.length === 0) {
+    const faces = result.FaceDetails || [];
+
+    if (faces.length === 0) {
       return res.status(200).json({
         faceDetected: false,
-        message: "Der kan ikke ses et menneskeligt ansigt på billedet."
+        message:
+          "Vi kan ikke med sikkerhed genkende et menneskeligt ansigt på billedet."
       });
     }
 
@@ -47,7 +56,7 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error("AWS ERROR:", err);
+    console.error("Rekognition fejl:", err);
     return res.status(500).json({
       error: "ansigtsstyling_failed",
       message: err.message
