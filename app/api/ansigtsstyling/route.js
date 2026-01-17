@@ -1,95 +1,83 @@
-import AWS from "aws-sdk";
+import { RekognitionClient, DetectFacesCommand } from "@aws-sdk/client-rekognition";
+import fetch from "node-fetch";
 
-/* 🔴 VIGTIGSTE LINJE */
-export const runtime = "nodejs";
-
-const rekognition = new AWS.Rekognition({
-  region: process.env.AWS_REGION,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+const rekognition = new RekognitionClient({
+  region: process.env.AWS_REGION
 });
 
-/* ===== CORS PREFLIGHT ===== */
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "https://www.checkdet.dk",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    }
-  });
-}
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Only POST allowed" });
+  }
 
-/* ===== POST ===== */
-export async function POST(req) {
   try {
-    const { image, consent } = await req.json();
+    const { image, consent, selections } = req.body;
 
     if (!image || consent !== true) {
-      return new Response(
-        JSON.stringify({
-          faceDetected: false,
-          message: "Billedet kunne ikke analyseres som et ansigt."
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "https://www.checkdet.dk"
-          }
-        }
-      );
+      return res.status(200).json({ faceDetected:false });
     }
 
     const base64 = image.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64, "base64");
 
-    const result = await rekognition
-      .detectFaces({ Image: { Bytes: buffer } })
-      .promise();
+    const detect = await rekognition.send(
+      new DetectFacesCommand({
+        Image:{Bytes:buffer},
+        Attributes:[]
+      })
+    );
 
-    if (!result.FaceDetails || result.FaceDetails.length === 0) {
-      return new Response(
-        JSON.stringify({
-          faceDetected: false,
-          message: "Der kan ikke ses et menneskeligt ansigt på billedet."
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "https://www.checkdet.dk"
-          }
-        }
-      );
+    if (!detect.FaceDetails || detect.FaceDetails.length === 0) {
+      return res.status(200).json({ faceDetected:false });
     }
 
-    return new Response(
-      JSON.stringify({
-        faceDetected: true,
-        message: "Der kan ses et menneskeligt ansigt på billedet."
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://www.checkdet.dk"
-        }
-      }
-    );
+    const question = `
+Du er en professionel ansigtsstylist.
+
+Skriv udførligt, men præcist.
+Undgå gentagelser mellem afsnit.
+Hvert afsnit skal bygge videre på det forrige.
+
+Brug konkrete observationer fra billedet og disse fokusområder:
+${(selections?.focus||[]).join(", ")}
+
+Vær ærlig og professionel – ikke sukkersød.
+Forklar konsekvenser.
+
+Strukturér svaret i præcis disse 7 afsnit:
+1. Helhedsindtryk
+2. Overordnet udtryk
+3. Formål og signalværdi
+4. Konkrete stylingforslag
+5. Fokusområder
+6. Hvad der bør undgås
+7. Alternativ tilgang
+
+Skriv på dansk i rolig, professionel tone.
+`.trim();
+
+    const r = await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{
+        "Authorization":`Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        model:"gpt-4o-mini",
+        messages:[{role:"user",content:question}],
+        temperature:0.65
+      })
+    });
+
+    const data = await r.json();
+
+    return res.status(200).json({
+      faceDetected:true,
+      answer:data.choices[0].message.content
+    });
 
   } catch (err) {
-    console.error("Ansigtsstyling crash:", err);
-    return new Response(
-      JSON.stringify({ error: "ansigtsstyling_failed" }),
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "https://www.checkdet.dk"
-        }
-      }
-    );
+    console.error(err);
+    return res.status(500).json({ error:"server_error" });
   }
 }
