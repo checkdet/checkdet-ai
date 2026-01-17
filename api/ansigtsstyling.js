@@ -1,7 +1,7 @@
 import AWS from "aws-sdk";
 
 export default async function handler(req, res) {
-  // CORS
+  // 🔒 CORS
   res.setHeader("Access-Control-Allow-Origin", "https://www.checkdet.dk");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -15,16 +15,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔍 LOG ENV (uden at lække nøgler)
     console.log("AWS_REGION:", process.env.AWS_REGION);
-    console.log(
-      "AWS_ACCESS_KEY_ID present:",
-      Boolean(process.env.AWS_ACCESS_KEY_ID)
-    );
-    console.log(
-      "AWS_SECRET_ACCESS_KEY present:",
-      Boolean(process.env.AWS_SECRET_ACCESS_KEY)
-    );
+    console.log("AWS_ACCESS_KEY_ID present:", Boolean(process.env.AWS_ACCESS_KEY_ID));
+    console.log("AWS_SECRET_ACCESS_KEY present:", Boolean(process.env.AWS_SECRET_ACCESS_KEY));
 
     const rekognition = new AWS.Rekognition({
       region: process.env.AWS_REGION,
@@ -46,11 +39,9 @@ export default async function handler(req, res) {
 
     console.log("Image buffer length:", buffer.length);
 
-    const result = await rekognition
-      .detectFaces({
-        Image: { Bytes: buffer }
-      })
-      .promise();
+    const result = await rekognition.detectFaces({
+      Image: { Bytes: buffer }
+    }).promise();
 
     console.log("Rekognition result:", result);
 
@@ -68,7 +59,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("🔥 AWS ERROR:", err);
-
     return res.status(500).json({
       error: "ansigtsstyling_failed",
       awsError: {
