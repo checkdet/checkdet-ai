@@ -15,7 +15,9 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Only POST allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Only POST allowed" });
+  }
 
   try {
     const { image, consent } = req.body || {};
@@ -23,7 +25,8 @@ export default async function handler(req, res) {
     if (!image || consent !== true) {
       return res.status(200).json({
         faceDetected: false,
-        message: "Billedet kunne ikke analyseres som et ansigt."
+        assessment: "IKKE_ANSIGT",
+        reason: "Manglende billede eller samtykke"
       });
     }
 
@@ -33,33 +36,60 @@ export default async function handler(req, res) {
 
     const command = new DetectFacesCommand({
       Image: { Bytes: buffer },
-
-      // 🔴 VIGTIGSTE LINJE – løser problemet
       Attributes: ["ALL"]
     });
 
     const result = await client.send(command);
-
     const faces = result.FaceDetails || [];
 
     if (faces.length === 0) {
       return res.status(200).json({
         faceDetected: false,
-        message:
-          "Vi kan ikke med sikkerhed genkende et menneskeligt ansigt på billedet."
+        assessment: "IKKE_ANSIGT",
+        reason: "Ingen ansigter fundet"
       });
     }
 
+    const face = faces[0];
+
+    const confidenceOk = face.Confidence >= 90;
+
+    const box = face.BoundingBox || {};
+    const faceArea = (box.Width || 0) * (box.Height || 0);
+    const sizeOk = faceArea >= 0.08;
+
+    const pose = face.Pose || {};
+    const poseOk =
+      Math.abs(pose.Yaw || 0) <= 25 &&
+      Math.abs(pose.Pitch || 0) <= 25;
+
+    const quality = face.Quality || {};
+    const qualityOk =
+      (quality.Brightness || 0) >= 40 &&
+      (quality.Sharpness || 0) >= 40;
+
+    const isValidFace =
+      confidenceOk && sizeOk && poseOk && qualityOk;
+
+    if (!isValidFace) {
+      return res.status(200).json({
+        faceDetected: false,
+        assessment: "IKKE_ANSIGT",
+        reason: "Ansigt ikke tydeligt, stort eller frontalt nok"
+      });
+    }
+
+    // 🔒 GATEKEEPER GODKENDT
     return res.status(200).json({
       faceDetected: true,
-      message: "Der kan ses et menneskeligt ansigt på billedet."
+      assessment: "ANSIGT",
+      reason: "Tydeligt menneskeligt ansigt"
     });
 
   } catch (err) {
-    console.error("Rekognition fejl:", err);
+    console.error("Ansigtsstyling fejl:", err);
     return res.status(500).json({
-      error: "ansigtsstyling_failed",
-      message: err.message
+      error: "ansigtsstyling_failed"
     });
   }
 }
