@@ -1,11 +1,12 @@
-import AWS from "aws-sdk";
-
 export default async function handler(req, res) {
-  // 🔐 CORS – altid først
+  /* =========================
+     🔐 CORS – ABSOLUT FØRST
+  ========================= */
   res.setHeader("Access-Control-Allow-Origin", "https://www.checkdet.dk");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  // 🔴 PRE-FLIGHT MÅ ALDRIG FEJLE
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -14,7 +15,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Only POST allowed" });
   }
 
+  /* =========================
+     🧠 ALT ANDET KOMMER EFTER
+  ========================= */
   try {
+    // Importér AWS FØRST NU
+    const AWS = (await import("aws-sdk")).default;
+
     const { image, consent } = req.body || {};
 
     if (!image || consent !== true) {
@@ -51,7 +58,6 @@ export default async function handler(req, res) {
 
     const face = faces[0];
 
-    // 🎯 Selfie-kalibrerede tærskler
     const confidenceOk = face.Confidence >= 75;
 
     const box = face.BoundingBox || {};
@@ -86,10 +92,9 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error("🔥 AWS Rekognition fejl:", err);
+    console.error("🔥 Serverfejl:", err);
     return res.status(500).json({
-      error: "ansigtsstyling_failed",
-      message: err.message
+      error: "ansigtsstyling_failed"
     });
   }
 }
