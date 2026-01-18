@@ -1,3 +1,8 @@
+export const config = {
+  runtime: "nodejs"
+};
+console.log("ANSIGTSSTYLING API LOADED");
+
 import { RekognitionClient, DetectFacesCommand } from "@aws-sdk/client-rekognition";
 
 const rekognition = new RekognitionClient({
